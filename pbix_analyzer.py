@@ -745,13 +745,13 @@ class PBIXParser:
 # Excel Generator
 # ============================================================
 
-HEADER_FILL = PatternFill(start_color="1F4E79", end_color="1F4E79", fill_type="solid")
-HEADER_FONT = Font(color="FFFFFF", bold=True, size=10)
+HEADER_FILL = PatternFill(start_color="FF1F4E79", end_color="FF1F4E79", fill_type="solid")
+HEADER_FONT = Font(color="FFFFFFFF", bold=True, size=10)
 HEADER_ALIGN = Alignment(horizontal='center', vertical='center', wrap_text=True)
-ZEBRA_FILL = PatternFill(start_color="DEE9F5", end_color="DEE9F5", fill_type="solid")
-WARN_FILL = PatternFill(start_color="FFE699", end_color="FFE699", fill_type="solid")
-CRIT_FILL = PatternFill(start_color="FF9999", end_color="FF9999", fill_type="solid")
-GREEN_FILL = PatternFill(start_color="E2EFDA", end_color="E2EFDA", fill_type="solid")
+ZEBRA_FILL = PatternFill(start_color="FFDEE9F5", end_color="FFDEE9F5", fill_type="solid")
+WARN_FILL = PatternFill(start_color="FFFFE699", end_color="FFFFE699", fill_type="solid")
+CRIT_FILL = PatternFill(start_color="FFFF9999", end_color="FFFF9999", fill_type="solid")
+GREEN_FILL = PatternFill(start_color="FFE2EFDA", end_color="FFE2EFDA", fill_type="solid")
 
 
 def _style_headers(ws, headers, row=1):
@@ -777,18 +777,31 @@ def _zebra(ws, start=2):
     for i, row in enumerate(ws.iter_rows(min_row=start), start=start):
         if i % 2 == 0:
             for c in row:
-                if c.fill.fgColor.rgb in ('00000000', 'FFFFFFFF', ''):
+                try:
+                    rgb = c.fill.fgColor.rgb
+                except (TypeError, AttributeError):
+                    rgb = None
+                if rgb in ('00000000', 'FFFFFFFF', '', None):
                     c.fill = ZEBRA_FILL
 
 
 def _clean(val, max_len=32000):
-    """Cleans a string for Excel cell use (removes illegal characters)"""
+    """Cleans a string for Excel cell use (removes illegal XML characters)"""
     if val is None:
         return ''
     s = str(val)
-    # Remove null bytes and other control chars (keep tab, newline, CR)
-    s = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f]', '', s)
+    # Remove all characters illegal in XML 1.0 (keeps tab \x09, newline \x0a, CR \x0d)
+    s = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]', '', s)
     return s[:max_len]
+
+
+def _v(val):
+    """Sanitize any value before writing to an Excel cell."""
+    if val is None:
+        return ''
+    if isinstance(val, str):
+        return _clean(val)
+    return val
 
 
 def create_excel(parser, output_path, log=None):
@@ -808,7 +821,7 @@ def create_excel(parser, output_path, log=None):
     # ===========================================================
     log("   📄 Sheet: Column Impact...")
     ws1 = wb.active
-    ws1.title = "⚡ Column Impact"
+    ws1.title = "Column Impact"
 
     headers1 = [
         'Column', 'Table',
@@ -861,7 +874,7 @@ def create_excel(parser, output_path, log=None):
             risk = 'PQ Only'
             rfill = ZEBRA_FILL
 
-        cells = [col, table, vc, pages, vtypes, utypes, in_pq, pq_str, risk]
+        cells = [_v(col), _v(table), vc, _v(pages), _v(vtypes), _v(utypes), in_pq, _v(pq_str), risk]
         for ci, val in enumerate(cells, 1):
             c = ws1.cell(row=row, column=ci, value=val)
             if ci == 9:  # RISK column
@@ -882,13 +895,13 @@ def create_excel(parser, output_path, log=None):
 
     row = 2
     for rec in sorted(parser.records, key=lambda r: (r.column, r.page, r.visual_type)):
-        ws2.cell(row=row, column=1, value=rec.column)
-        ws2.cell(row=row, column=2, value=rec.table)
-        ws2.cell(row=row, column=3, value=rec.usage_type)
-        ws2.cell(row=row, column=4, value=rec.page)
-        ws2.cell(row=row, column=5, value=rec.visual_type)
-        ws2.cell(row=row, column=6, value=rec.visual_title)
-        ws2.cell(row=row, column=7, value=rec.source)
+        ws2.cell(row=row, column=1, value=_v(rec.column))
+        ws2.cell(row=row, column=2, value=_v(rec.table))
+        ws2.cell(row=row, column=3, value=_v(rec.usage_type))
+        ws2.cell(row=row, column=4, value=_v(rec.page))
+        ws2.cell(row=row, column=5, value=_v(rec.visual_type))
+        ws2.cell(row=row, column=6, value=_v(rec.visual_title))
+        ws2.cell(row=row, column=7, value=_v(rec.source))
         row += 1
 
     _zebra(ws2)
@@ -905,9 +918,9 @@ def create_excel(parser, output_path, log=None):
 
     row = 2
     for r in sorted(pq_refs, key=lambda x: (x['column'], x['query'])):
-        ws3.cell(row=row, column=1, value=r['column'])
-        ws3.cell(row=row, column=2, value=r['query'])
-        ws3.cell(row=row, column=3, value=r['context'])
+        ws3.cell(row=row, column=1, value=_v(r['column']))
+        ws3.cell(row=row, column=2, value=_v(r['query']))
+        ws3.cell(row=row, column=3, value=_v(r['context']))
         row += 1
 
     _zebra(ws3)
@@ -925,7 +938,7 @@ def create_excel(parser, output_path, log=None):
 
     row = 2
     for qname, code in sorted(parser.pq_queries.items()):
-        ws4.cell(row=row, column=1, value=qname)
+        ws4.cell(row=row, column=1, value=_v(qname))
         cell = ws4.cell(row=row, column=2, value=_clean(code))
         cell.alignment = Alignment(wrap_text=True, vertical='top')
         lines = code.count('\n') + 1 if code else 1
@@ -947,21 +960,21 @@ def create_excel(parser, output_path, log=None):
         for tname in sorted(parser.model_tables):
             tdata = parser.model_tables[tname]
             for col in sorted(tdata['columns'], key=lambda c: c['name']):
-                ws5.cell(row=row, column=1, value=tname)
-                ws5.cell(row=row, column=2, value=col['name'])
+                ws5.cell(row=row, column=1, value=_v(tname))
+                ws5.cell(row=row, column=2, value=_v(col['name']))
                 ws5.cell(row=row, column=3, value='Column')
-                ws5.cell(row=row, column=4, value=col['dataType'])
+                ws5.cell(row=row, column=4, value=_v(col['dataType']))
                 ws5.cell(row=row, column=5, value='Yes' if col['isHidden'] else 'No')
                 expr = col.get('expression', '') or ''
-                ws5.cell(row=row, column=6, value=expr[:500])
+                ws5.cell(row=row, column=6, value=_clean(expr, 500))
                 row += 1
             for msr in sorted(tdata['measures'], key=lambda m: m['name']):
-                ws5.cell(row=row, column=1, value=tname)
-                ws5.cell(row=row, column=2, value=msr['name'])
+                ws5.cell(row=row, column=1, value=_v(tname))
+                ws5.cell(row=row, column=2, value=_v(msr['name']))
                 ws5.cell(row=row, column=3, value='Measure')
                 ws5.cell(row=row, column=5, value='Yes' if msr['isHidden'] else 'No')
                 expr = msr.get('expression', '') or ''
-                ws5.cell(row=row, column=6, value=expr[:500])
+                ws5.cell(row=row, column=6, value=_clean(expr, 500))
                 row += 1
 
         _zebra(ws5)
@@ -980,9 +993,9 @@ def create_excel(parser, output_path, log=None):
         for tname in parser.diagram_tables:
             used = 'Yes' if tname.lower() in visual_tables else 'No'
             cols_used = sorted({r.column for r in parser.records if r.table.lower() == tname.lower()})
-            ws6.cell(row=row, column=1, value=tname)
+            ws6.cell(row=row, column=1, value=_v(tname))
             ws6.cell(row=row, column=2, value=used)
-            ws6.cell(row=row, column=3, value=', '.join(cols_used))
+            ws6.cell(row=row, column=3, value=_v(', '.join(cols_used)))
             row += 1
         _zebra(ws6)
         ws6.freeze_panes = 'A2'
@@ -999,7 +1012,7 @@ def create_excel(parser, output_path, log=None):
         ws7.column_dimensions['B'].width = 120
         row = 2
         for qname, code in sorted(parser.dax_queries.items()):
-            ws7.cell(row=row, column=1, value=qname)
+            ws7.cell(row=row, column=1, value=_v(qname))
             cell = ws7.cell(row=row, column=2, value=_clean(code))
             cell.alignment = Alignment(wrap_text=True, vertical='top')
             lines = code.count('\n') + 1 if code else 1
@@ -1188,8 +1201,13 @@ class App:
         threading.Thread(target=_worker, daemon=True).start()
 
     def _open_excel(self):
-        if self._output_path and Path(self._output_path).exists():
-            os.startfile(self._output_path)
+        if not (self._output_path and Path(self._output_path).exists()):
+            return
+        import tempfile, shutil
+        tmp_dir = tempfile.mkdtemp()
+        tmp_file = os.path.join(tmp_dir, Path(self._output_path).name)
+        shutil.copy2(self._output_path, tmp_file)
+        subprocess.Popen(f'start "" "{tmp_file}"', shell=True)
 
 
 # ============================================================
